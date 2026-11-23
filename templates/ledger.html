@@ -4,7 +4,103 @@
 <section class="panel">
   <h1>电池台账</h1>
   <p class="hint">当前生效的每块电池一条记录（同一电池号的更正会覆盖旧值，审计日志保存在数据库中）。</p>
+
+  <div class="stats">
+    <div><span class="stat-value">{{ totals.ledger_total }}</span><span class="stat-label">台账电池数</span></div>
+    <div><span class="stat-value">{{ totals.summary_total }}</span><span class="stat-label">寿命汇总电池数</span></div>
+  </div>
+
+  {% if totals.mismatch %}
+  <div class="alert" role="alert">
+    台账电池数（{{ totals.ledger_total }}）与寿命汇总电池数（{{ totals.summary_total }}）不一致，
+    可点击「校准汇总」按现有分组口径修正计数不符的组。
+  </div>
+  {% else %}
+  <p class="hint">台账与寿命汇总的电池总数一致；如仍怀疑个别分组计数有误，也可执行一次全量核对。</p>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('calibrate') }}" class="calibrate-form"
+        onsubmit="return confirm('将按台账全量扫描一遍并修正寿命汇总，扫描期间导入不受影响。确认开始校准？');">
+    <button type="submit">校准汇总</button>
+    <span class="hint">一次校准最多全扫台账一遍；校准不占用每块电池的汇总记录额度。</span>
+  </form>
+
+  {% if calibration_errors %}
+  <div class="alert" role="alert">
+    <strong>校准失败，本次修正已全部撤销：</strong>
+    <ul>{% for error in calibration_errors %}<li>{{ error }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+
+  {% if calibration %}
+  <h2>本次校准结果</h2>
+  <p class="hint">
+    台账电池 {{ calibration.ledger_batteries }} 块，汇总电池 {{ calibration.summary_batteries }} 块；
+    计数不符的分组 {{ calibration.mismatched_groups }} 个，已修正
+    {{ calibration.corrected_groups }} 个，对齐电池汇总记录
+    {{ calibration.corrected_battery_summaries }} 条；扫描期间入账的台账变动
+    {{ calibration.changes_during_scan }} 条，均已计入校准口径。
+  </p>
+  {% if calibration.group_fixes %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>启用日</th><th>入组机龄（天）</th><th>结束机龄（天）</th><th>结局</th>
+          <th>校准前计数</th><th>校准后计数</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for fix in calibration.group_fixes %}
+        <tr>
+          <td>{{ fix.activation_date }}</td>
+          <td>{{ fix.entry_age }}</td>
+          <td>{{ fix.end_age }}</td>
+          <td>{{ "故障" if fix.event == 1 else "正常结束" }}</td>
+          <td>{{ fix.before_count }}</td>
+          <td>{{ fix.after_count }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="hint">计数为 0 表示该侧原本没有这个分组（汇总中缺失按零计，台账已无该组则删除汇总行）。</p>
+  {% else %}
+  <p class="empty">没有需要修正的分组。</p>
+  {% endif %}
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>校准历史</h2>
+  {% if runs %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>批次</th><th>时间 (UTC)</th><th>不符分组</th><th>修正分组</th><th>对齐电池汇总</th><th>扫描期间变动</th></tr>
+      </thead>
+      <tbody>
+        {% for run in runs %}
+        <tr>
+          <td>{{ run["id"] }}</td>
+          <td>{{ run["ran_at"] }}</td>
+          <td>{{ run["mismatched_groups"] }}</td>
+          <td>{{ run["corrected_groups"] }}</td>
+          <td>{{ run["corrected_battery_summaries"] }}</td>
+          <td>{{ run["changes_during_scan"] }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty">还没有校准记录。</p>
+  {% endif %}
+</section>
+
+<section class="panel">
   {% if rows %}
+  <h2>当前台账（{{ rows|length }} 块电池）</h2>
   <div class="table-wrap">
     <table>
       <thead>
@@ -24,6 +120,7 @@
     </table>
   </div>
   {% else %}
+  <h2>当前台账</h2>
   <p class="empty">台账为空，请先<a href="{{ url_for('upload_page') }}">上传随访 CSV</a>。</p>
   {% endif %}
 </section>

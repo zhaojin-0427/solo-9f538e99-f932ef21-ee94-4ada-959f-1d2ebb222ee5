@@ -20,6 +20,7 @@ from werkzeug.exceptions import RequestEntityTooLarge
 from werkzeug.utils import secure_filename
 
 from analysis import summarize
+from calibration import CalibrationError, calibrate_summary, calibration_history
 from db import MAX_SUMMARY_RECORDS_PER_BATTERY, Database, ledger_rows
 from importer import (
     ImportValidationError,
@@ -163,9 +164,61 @@ def create_app(config: dict | None = None) -> Flask:
         conn = database.connect()
         try:
             rows = list(ledger_rows(conn))
+            totals = _ledger_vs_summary_totals(conn)
+            runs = calibration_history(conn)
         finally:
             conn.close()
-        return render_template("ledger.html", rows=rows)
+        return render_template(
+            "ledger.html",
+            rows=rows,
+            totals=totals,
+            runs=runs,
+            calibration=None,
+            calibration_errors=[],
+        )
+
+    @app.post("/calibrate")
+    def calibrate():
+        calibration = None
+        errors: list[str] = []
+        conn = database.connect()
+        try:
+            try:
+                calibration = calibrate_summary(conn)
+            except CalibrationError as exc:
+                errors.append(str(exc))
+            except sqlite3.Error as exc:
+                app.logger.exception("calibration failed")
+                errors.append(f"校准失败，本次修正已全部撤销，期间成功的导入照常保留：{exc}")
+            except Exception:  # pragma: no cover - defensive; transaction rolled back
+                app.logger.exception("unexpected calibration failure")
+                errors.append("校准过程中发生未预期错误，本次修正已全部撤销，原有汇总仍可查询。")
+
+            if calibration is not None:
+                if calibration.changed_anything:
+                    flash(
+                        f"校准完成：修正 {calibration.corrected_groups} 个计数不符的分组"
+                        f"（另有 {calibration.corrected_battery_summaries} 条电池汇总记录被对齐）；"
+                        f"扫描期间有 {calibration.changes_during_scan} 条台账变动，已全部计入。"
+                    )
+                else:
+                    flash("校准完成：各分组计数与台账一致，无需修正。")
+            rows = list(ledger_rows(conn))
+            totals = _ledger_vs_summary_totals(conn)
+            runs = calibration_history(conn)
+        finally:
+            conn.close()
+        return (
+            render_template(
+                "ledger.html",
+                rows=rows,
+                totals=totals,
+                runs=runs,
+                calibration=calibration,
+                calibration_errors=errors,
+            ),
+            409 if errors else 200,
+        )
 
     @app.get("/template.csv")
     def template_csv():
@@ -230,6 +283,22 @@ def _recent_batches(database: Database):
         )
     finally:
         conn.close()
+
+
+def _ledger_vs_summary_totals(conn: sqlite3.Connection) -> dict[str, int]:
+    ledger_total = int(
+        conn.execute("SELECT COUNT(*) FROM battery_ledger").fetchone()[0]
+    )
+    summary_total = int(
+        conn.execute(
+            "SELECT COALESCE(SUM(subject_count), 0) FROM summary_counts"
+        ).fetchone()[0]
+    )
+    return {
+        "ledger_total": ledger_total,
+        "summary_total": summary_total,
+        "mismatch": ledger_total != summary_total,
+    }
 
 
 app = create_app()

@@ -86,6 +86,49 @@ CREATE TABLE IF NOT EXISTS import_batches (
     unchanged       INTEGER NOT NULL,
     summary_records INTEGER NOT NULL
 );
+
+-- Append-only audit of every committed ledger write.  The calibration scan
+-- uses the highest ``seq`` as a watermark so it only has to re-read batteries
+-- changed while its snapshot was open, instead of scanning the ledger twice.
+-- Rows are written inside the import transaction, so a rolled-back import
+-- never leaves a trace here.
+CREATE TABLE IF NOT EXISTS ledger_changes (
+    seq        INTEGER PRIMARY KEY AUTOINCREMENT,
+    battery_no TEXT NOT NULL,
+    action     TEXT NOT NULL CHECK (action IN ('insert', 'update', 'delete')),
+    changed_at TEXT NOT NULL
+);
+
+-- One row per successful summary calibration.  A failed calibration rolls
+-- back together with its detail rows, so this table only contains completed runs.
+CREATE TABLE IF NOT EXISTS calibration_runs (
+    id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+    ran_at                      TEXT NOT NULL,
+    mismatched_groups           INTEGER NOT NULL CHECK (mismatched_groups >= 0),
+    corrected_groups            INTEGER NOT NULL CHECK (corrected_groups >= 0),
+    corrected_battery_summaries INTEGER NOT NULL CHECK (corrected_battery_summaries >= 0),
+    changes_during_scan         INTEGER NOT NULL CHECK (changes_during_scan >= 0)
+);
+
+-- Before/after subject count of every group the calibration actually wrote.
+-- A count of zero means that side had no row for the group (the table's
+-- positive-count CHECK forbids storing zero).
+CREATE TABLE IF NOT EXISTS calibration_group_changes (
+    run_id          INTEGER NOT NULL REFERENCES calibration_runs(id),
+    activation_date TEXT NOT NULL,
+    entry_age       INTEGER NOT NULL,
+    end_age         INTEGER NOT NULL,
+    event           INTEGER NOT NULL CHECK (event IN (0, 1)),
+    before_count    INTEGER NOT NULL CHECK (before_count >= 0),
+    after_count     INTEGER NOT NULL CHECK (after_count >= 0)
+);
+
+-- Per-battery summary rows repaired alongside the aggregate groups.
+CREATE TABLE IF NOT EXISTS calibration_battery_changes (
+    run_id     INTEGER NOT NULL REFERENCES calibration_runs(id),
+    battery_no TEXT NOT NULL,
+    action     TEXT NOT NULL CHECK (action IN ('insert', 'update', 'delete'))
+);
 """
 
 
@@ -237,6 +280,36 @@ def record_usage(conn: sqlite3.Connection, battery_no: str) -> int:
             (battery_no,),
         ).fetchone()[0]
     )
+
+
+def record_ledger_change(
+    conn: sqlite3.Connection, battery_no: str, action: str, now: str
+) -> None:
+    """Append a ledger-write audit entry inside the caller's transaction."""
+
+    conn.execute(
+        "INSERT INTO ledger_changes (battery_no, action, changed_at) VALUES (?, ?, ?)",
+        (battery_no, action, now),
+    )
+
+
+def ledger_records_for(
+    conn: sqlite3.Connection, battery_nos: Sequence[str]
+) -> dict[str, tuple[str, str, str, str, str]]:
+    """Current ledger values for the given batteries (missing keys are deleted)."""
+
+    result: dict[str, tuple[str, str, str, str, str]] = {}
+    nos = list(battery_nos)
+    for start in range(0, len(nos), 400):
+        chunk = nos[start : start + 400]
+        placeholders = ",".join("?" for _ in chunk)
+        for row in conn.execute(
+            "SELECT battery_no, activation_date, followup_start, followup_end, outcome "
+            f"FROM battery_ledger WHERE battery_no IN ({placeholders})",
+            chunk,
+        ):
+            result[row[0]] = tuple(row)
+    return result
 
 
 def rebuild_summary(conn: sqlite3.Connection) -> None:

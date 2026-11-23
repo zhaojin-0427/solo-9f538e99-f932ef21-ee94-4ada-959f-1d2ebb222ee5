@@ -12,6 +12,7 @@ from typing import Iterable, Sequence
 from db import (
     MAX_SUMMARY_RECORDS_PER_BATTERY,
     apply_summary_changes,
+    record_ledger_change,
     record_usage,
     summary_from_values,
     usage_for,
@@ -591,6 +592,7 @@ def apply_import(conn, filename: str, records: Sequence[FollowupRecord]) -> Impo
                 )
                 changes.append((summary_from_values(plan.old_values), None))
                 record_usage(conn, record.battery_no)
+                record_ledger_change(conn, record.battery_no, "delete", now)
                 deleted += 1
                 summary_records += 1
                 continue
@@ -620,6 +622,7 @@ def apply_import(conn, filename: str, records: Sequence[FollowupRecord]) -> Impo
                 )
                 inserted += 1
                 changes.append((None, new_summary))
+                record_ledger_change(conn, record.battery_no, "insert", now)
             else:
                 conn.execute(
                     "UPDATE battery_ledger SET activation_date = ?, followup_start = ?, "
@@ -660,6 +663,7 @@ def apply_import(conn, filename: str, records: Sequence[FollowupRecord]) -> Impo
                 changes.append(
                     (summary_from_values(plan.old_values), new_summary)
                 )
+                record_ledger_change(conn, record.battery_no, "update", now)
             record_usage(conn, record.battery_no)
             summary_records += 1
 
