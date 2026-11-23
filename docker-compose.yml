@@ -1,0 +1,16 @@
+services:
+  battery-survival:
+    build: .
+    image: battery-survival:latest
+    container_name: battery-survival
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    environment:
+      BATTERY_DB: /data/battery.db
+      SECRET_KEY: "${SECRET_KEY:-change-me-in-production}"
+    volumes:
+      - battery-data:/data
+    restart: unless-stopped
+
+volumes:
+  battery-data:

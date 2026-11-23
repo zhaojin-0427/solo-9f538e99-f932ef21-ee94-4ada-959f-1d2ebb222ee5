@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}寿命分析 · 电池寿命分析{% endblock %}
+{% block content %}
+<section class="panel">
+  <h1>电池寿命分析</h1>
+  <form method="get" action="{{ url_for('survival_page') }}" class="cutoff-form">
+    <label for="cutoff">截止日（UTC）</label>
+    <input id="cutoff" name="cutoff" type="date" value="{{ cutoff_text or (cutoff.isoformat() if cutoff else '') }}">
+    <button type="submit">查看</button>
+    {% if cutoff %}<span class="hint">当前截止日：{{ cutoff.isoformat() }}</span>{% endif %}
+  </form>
+
+  {% if errors %}
+  <div class="alert" role="alert">
+    <ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+
+  {% if result %}
+  <div class="stats">
+    <div><span class="stat-value">{{ result.enrolled_subjects }}</span><span class="stat-label">已入组电池</span></div>
+    <div><span class="stat-value">{{ result.risk_set_at_cutoff }}</span><span class="stat-label">截止日在险数</span></div>
+    <div><span class="stat-value">{{ result.points|sum(attribute='failures') }}</span><span class="stat-label">累计故障数</span></div>
+    <div><span class="stat-value">{{ total_subjects }}</span><span class="stat-label">汇总表电池数</span></div>
+  </div>
+
+  {% if not result.points %}
+  <p class="empty">截至 {{ result.cutoff.isoformat() }} 尚没有发生故障的电池，无法给出故障机龄曲线。</p>
+  {% else %}
+  <p class="hint">
+    机龄从启用日起按天计算。随访截到 {{ result.cutoff.isoformat() }}：尚未入组的电池不计；
+    截止当天发生的故障照计；当天结束随访的电池仍计入当天的在险数。
+    同一机龄先入组再计故障。
+  </p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>故障机龄（天）</th>
+          <th>在险数</th>
+          <th>故障数</th>
+          <th>当天删失数</th>
+          <th>无故障概率 KM</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for point in result.points %}
+        <tr>
+          <td>{{ point.age_days }}</td>
+          <td>{{ point.at_risk }}</td>
+          <td>{{ point.failures }}</td>
+          <td>{{ point.censored }}</td>
+          <td>{{ "%.6f"|format(point.survival) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>如何按机龄安排抽检</h2>
+  <p>
+    表中每一行对应一个发生过故障的机龄。KM 无故障概率逐行相乘得到，可直接用于比较
+    不同机龄电池的可靠性；在险数较小的机龄行波动较大，安排抽检时请结合样本量判断。
+  </p>
+</section>
+{% endblock %}

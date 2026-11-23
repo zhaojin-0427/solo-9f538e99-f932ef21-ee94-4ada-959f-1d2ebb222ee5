@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}电池寿命分析{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="{{ url_for('survival_page') }}">共享电单车 · 电池寿命分析</a>
+    <nav>
+      <a href="{{ url_for('survival_page') }}">寿命分析</a>
+      <a href="{{ url_for('upload_page') }}">上传随访</a>
+      <a href="{{ url_for('ledger_page') }}">台账</a>
+    </nav>
+  </header>
+  <main>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <div class="flash" role="status">
+          {% for message in messages %}<p>{{ message }}</p>{% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+  <footer>
+    <p>日期一律按 UTC 计算；机龄 = 随访日期 − 启用日（天）。</p>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}上传随访 CSV · 电池寿命分析{% endblock %}
+{% block content %}
+<section class="panel">
+  <h1>上传随访 CSV</h1>
+  <p class="hint">
+    文件内电池号必须唯一。后上传的记录可更正同号旧记录：留空“操作”时，
+    新电池号自动新增、已存在则视为更正；也可显式填写“补录 / 更正 / 删除”。
+    整份文件校验失败时不会写入任何数据，已有曲线照常可查。
+  </p>
+
+  {% if errors %}
+  <div class="alert" role="alert">
+    <strong>导入失败，本次未做任何更改：</strong>
+    <ul>
+      {% for error in errors %}<li>{{ error }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <form method="post" enctype="multipart/form-data" class="upload-form">
+    <label for="file">CSV 文件</label>
+    <input id="file" name="file" type="file" accept=".csv,text/csv" required>
+    <button type="submit">导入</button>
+  </form>
+
+  <h2>文件格式</h2>
+  <p>
+    必需列：<code>battery_no</code>（电池号）、<code>activation_date</code>（启用日）、
+    <code>followup_start</code>（随访首日）、<code>followup_end</code>（随访末日）、
+    <code>outcome</code>（结局：<code>failure</code> / <code>censored</code>，
+    也接受“故障 / 正常结束”）。可选列 <code>action</code>
+    （<code>insert</code> / <code>update</code> / <code>delete</code>，或留空自动判断）。
+    日期用 <code>YYYY-MM-DD</code>（UTC）。
+  </p>
+  <p><a href="{{ url_for('template_csv') }}">下载模板 CSV</a></p>
+
+  <h2>最近的导入批次</h2>
+  {% if batches %}
+  <table>
+    <thead>
+      <tr><th>批次</th><th>文件</th><th>时间 (UTC)</th><th>行数</th><th>新增</th><th>更正</th><th>删除</th><th>未变化</th><th>汇总记录</th></tr>
+    </thead>
+    <tbody>
+      {% for batch in batches %}
+      <tr>
+        <td>{{ batch["id"] }}</td>
+        <td>{{ batch["filename"] }}</td>
+        <td>{{ batch["imported_at"] }}</td>
+        <td>{{ batch["total_rows"] }}</td>
+        <td>{{ batch["inserted"] }}</td>
+        <td>{{ batch["updated"] }}</td>
+        <td>{{ batch["deleted"] }}</td>
+        <td>{{ batch["unchanged"] }}</td>
+        <td>{{ batch["summary_records"] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">还没有导入记录。</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>记录上限</h2>
+  <p>
+    每块电池的补录、更正和删除合计最多写入 {{ max_summary_records }} 条汇总记录。
+    汇总表本身每块电池只保留 1 条记录（更正原地覆盖并递增修订号），
+    但已用量会跨删除保留；内容完全相同的重复上传不消耗额度。
+    超过上限的变动会被整份文件拒绝，原有曲线不受影响。
+  </p>
+</section>
+{% endblock %}

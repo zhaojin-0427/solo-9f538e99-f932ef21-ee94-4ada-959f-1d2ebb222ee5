@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}台账 · 电池寿命分析{% endblock %}
+{% block content %}
+<section class="panel">
+  <h1>电池台账</h1>
+  <p class="hint">当前生效的每块电池一条记录（同一电池号的更正会覆盖旧值，审计日志保存在数据库中）。</p>
+  {% if rows %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>电池号</th><th>启用日</th><th>随访首日</th><th>随访末日</th><th>结局</th></tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td>{{ row["battery_no"] }}</td>
+          <td>{{ row["activation_date"] }}</td>
+          <td>{{ row["followup_start"] }}</td>
+          <td>{{ row["followup_end"] }}</td>
+          <td>{{ "故障" if row["outcome"] == "failure" else "正常结束" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="empty">台账为空，请先<a href="{{ url_for('upload_page') }}">上传随访 CSV</a>。</p>
+  {% endif %}
+</section>
+{% endblock %}

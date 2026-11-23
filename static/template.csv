@@ -1,0 +1,4 @@
+battery_no,activation_date,followup_start,followup_end,outcome,action
+B-0001,2026-01-01,2026-01-02,2026-03-01,failure,
+B-0002,2026-01-05,2026-01-10,2026-05-20,censored,
+B-0003,2026-02-01,2026-02-03,2026-04-01,failure,
